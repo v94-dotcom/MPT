@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Gemini_Generated_Image_subd6nsubd6nsubd.png" width="120" alt="MPT Logo"/>
+  <img src="img/Gemini_Generated_Image_subd6nsubd6nsubd.png" width="120" alt="MPT Logo"/>
 </p>
 
 <h1 align="center">MPT — Master Password Trainer</h1>
@@ -99,7 +99,8 @@ Your actual password is **never visible** anywhere in the app — not in storage
 
 ## Screenshots
 
-> *Coming soon — screenshots of the dashboard, challenge screen, streak calendar, and onboarding flow.*
+<img src="img/Screenshot_20260409_192701.png" width="250" /> <img src="img/Screenshot_20260409_193325.png" width="250" /><img src="img/Screenshot_20260409_192714.png" width="250" /> <img src="img/Screenshot_20260409_193335.png" width="250" />
+
 
 ---
 
