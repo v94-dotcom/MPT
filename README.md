@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png" width="120" alt="MPT Logo"/>
+  <img src="Gemini_Generated_Image_subd6nsubd6nsubd.png" width="120" alt="MPT Logo"/>
 </p>
 
 <h1 align="center">MPT — Master Password Trainer</h1>
