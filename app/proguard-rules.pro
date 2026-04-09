@@ -60,10 +60,8 @@
 -keep class * extends androidx.lifecycle.ViewModel { <init>(...); }
 -keep class * extends androidx.lifecycle.AndroidViewModel { <init>(...); }
 
-# --- WorkManager Workers (reflective instantiation) ---
--keep class * extends androidx.work.ListenableWorker {
-    public <init>(android.content.Context, androidx.work.WorkerParameters);
-}
+# --- WorkManager (Room database + workers use reflection) ---
+-keep class androidx.work.** { *; }
 
 # --- BroadcastReceivers ---
 -keep class com.mpt.masterpasswordtrainer.worker.BootReceiver { *; }
