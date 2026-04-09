@@ -17,6 +17,7 @@ import com.mpt.masterpasswordtrainer.MainActivity
 import com.mpt.masterpasswordtrainer.R
 import com.mpt.masterpasswordtrainer.data.model.PasswordEntry
 import com.mpt.masterpasswordtrainer.data.repository.PasswordRepository
+import com.mpt.masterpasswordtrainer.widget.MPTWidgetUpdater
 import java.util.concurrent.TimeUnit
 
 class ReminderWorker(
@@ -31,6 +32,9 @@ class ReminderWorker(
         val overdueEntries = entries.filter { entry ->
             daysSinceLastVerified(entry) >= entry.reminderDays
         }
+
+        // Update home screen widgets with latest status
+        MPTWidgetUpdater.updateAll(applicationContext)
 
         if (overdueEntries.isEmpty()) return Result.success()
 
@@ -59,13 +63,19 @@ class ReminderWorker(
     private fun showSingleNotification(entry: PasswordEntry) {
         val pendingIntent = createDeepLinkPendingIntent(entry.id)
 
+        val contentText = if (entry.customReminderMessage.isNotEmpty()) {
+            entry.customReminderMessage
+        } else {
+            "Your ${entry.serviceName} password check is due"
+        }
+
         val notification = NotificationCompat.Builder(
             applicationContext,
             MPTApplication.NOTIFICATION_CHANNEL_ID
         )
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Time to practice!")
-            .setContentText("Your ${entry.serviceName} password check is due")
+            .setContentText(contentText)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
@@ -82,8 +92,12 @@ class ReminderWorker(
             .setBigContentTitle("${entries.size} passwords need practice")
 
         entries.forEach { entry ->
-            val days = daysSinceLastVerified(entry)
-            inboxStyle.addLine("${entry.serviceName} — $days days overdue")
+            if (entry.customReminderMessage.isNotEmpty()) {
+                inboxStyle.addLine("${entry.serviceName}: ${entry.customReminderMessage}")
+            } else {
+                val days = daysSinceLastVerified(entry)
+                inboxStyle.addLine("${entry.serviceName} — $days days overdue")
+            }
         }
 
         val notification = NotificationCompat.Builder(

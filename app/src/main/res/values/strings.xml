@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">MPT</string>
+    <string name="widget_description">Shows count of overdue password checks</string>
+    <string name="widget_medium_description">Shows password entry status list</string>
+    <string name="widget_small_name">MPT Status</string>
+    <string name="widget_medium_name">MPT Entries</string>
 </resources>

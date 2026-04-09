@@ -1,6 +1,7 @@
 package com.mpt.masterpasswordtrainer.ui.screens.challenge
 
 import android.app.Application
+import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -16,6 +17,9 @@ import com.mpt.masterpasswordtrainer.data.security.KeyInvalidatedException
 import com.mpt.masterpasswordtrainer.data.security.KeystoreManager
 import com.mpt.masterpasswordtrainer.ui.components.daysSinceLastVerified
 import com.mpt.masterpasswordtrainer.ui.components.maskEmail
+import com.mpt.masterpasswordtrainer.ui.screens.settings.SettingsViewModel
+import com.mpt.masterpasswordtrainer.ui.screens.settings.SettingsViewModel.Companion.DEFAULT_PANIC_WIPE_THRESHOLD
+import com.mpt.masterpasswordtrainer.widget.MPTWidgetUpdater
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -28,14 +32,41 @@ enum class VerificationResult {
     BOTH_WRONG
 }
 
+enum class DifficultyTier {
+    NORMAL,
+    INTERMEDIATE,
+    ADVANCED;
+
+    companion object {
+        const val INTERMEDIATE_THRESHOLD = 5
+        const val ADVANCED_THRESHOLD = 10
+        const val ADVANCED_DELAY_SECONDS = 5
+
+        fun fromStreak(streak: Int): DifficultyTier = when {
+            streak >= ADVANCED_THRESHOLD -> ADVANCED
+            streak >= INTERMEDIATE_THRESHOLD -> INTERMEDIATE
+            else -> NORMAL
+        }
+    }
+}
+
 class ChallengeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = PasswordRepository(application)
+    private val prefs = application.getSharedPreferences("mpt_prefs", Context.MODE_PRIVATE)
 
     // Entry data
     var entry by mutableStateOf<PasswordEntry?>(null)
         private set
     var daysElapsed by mutableIntStateOf(0)
+        private set
+
+    // Difficulty state
+    var difficultyTier by mutableStateOf(DifficultyTier.NORMAL)
+        private set
+    var delayCountdown by mutableIntStateOf(0)
+        private set
+    var isDelayActive by mutableStateOf(false)
         private set
 
     // Input state
@@ -78,6 +109,10 @@ class ChallengeViewModel(application: Application) : AndroidViewModel(applicatio
     var passwordHintRevealed by mutableStateOf<String?>(null)
         private set
 
+    // Panic wipe triggered — ChallengeScreen navigates to onboarding
+    var panicWipeTriggered by mutableStateOf(false)
+        private set
+
     // Result message
     var resultMessage by mutableStateOf<String?>(null)
         private set
@@ -97,6 +132,27 @@ class ChallengeViewModel(application: Application) : AndroidViewModel(applicatio
         }
 
         hasPasswordHint = loaded.passwordHint.isNotEmpty()
+
+        // Determine difficulty tier
+        val adaptiveEnabled = prefs.getBoolean(SettingsViewModel.KEY_ADAPTIVE_DIFFICULTY, true)
+        difficultyTier = if (adaptiveEnabled) DifficultyTier.fromStreak(loaded.streak) else DifficultyTier.NORMAL
+
+        // Start delay countdown for advanced mode
+        if (difficultyTier == DifficultyTier.ADVANCED) {
+            startDelayCountdown()
+        }
+    }
+
+    private fun startDelayCountdown() {
+        isDelayActive = true
+        delayCountdown = DifficultyTier.ADVANCED_DELAY_SECONDS
+        viewModelScope.launch {
+            while (delayCountdown > 0) {
+                delay(1000)
+                delayCountdown--
+            }
+            isDelayActive = false
+        }
     }
 
     fun updateEmailInput(value: String) {
@@ -129,7 +185,9 @@ class ChallengeViewModel(application: Application) : AndroidViewModel(applicatio
 
         viewModelScope.launch {
             try {
-                val (emailCorrect, passwordCorrect) = withContext(Dispatchers.Default) {
+                data class VerifyResult(val emailCorrect: Boolean, val passwordCorrect: Boolean, val matchedVersionLabel: String)
+
+                val verifyResult = withContext(Dispatchers.Default) {
                     val key = KeystoreManager.getOrCreateKey()
 
                     // Compare email (skip if no email stored)
@@ -144,24 +202,27 @@ class ChallengeViewModel(application: Application) : AndroidViewModel(applicatio
                         true
                     }
 
-                    // Hash input password and compare
-                    val passwordCopy = passwordInput.copyOf()
-                    val passwordMatch = HashUtil.verifyPassword(
-                        passwordCopy,
-                        currentEntry.passwordSalt,
-                        currentEntry.passwordHash
-                    )
-                    // passwordCopy is zeroed inside verifyPassword
+                    // Check password against ALL stored versions
+                    var passwordMatch = false
+                    var matchedLabel = ""
+                    for (version in currentEntry.passwordVersions) {
+                        val passwordCopy = passwordInput.copyOf()
+                        if (HashUtil.verifyPassword(passwordCopy, version.passwordSalt, version.passwordHash)) {
+                            passwordMatch = true
+                            matchedLabel = version.label
+                            break
+                        }
+                    }
 
-                    Pair(emailMatch, passwordMatch)
+                    VerifyResult(emailMatch, passwordMatch, matchedLabel)
                 }
 
                 sessionAttempts++
 
                 val result = when {
-                    emailCorrect && passwordCorrect -> VerificationResult.SUCCESS
-                    !emailCorrect && passwordCorrect -> VerificationResult.EMAIL_WRONG
-                    emailCorrect && !passwordCorrect -> VerificationResult.PASSWORD_WRONG
+                    verifyResult.emailCorrect && verifyResult.passwordCorrect -> VerificationResult.SUCCESS
+                    !verifyResult.emailCorrect && verifyResult.passwordCorrect -> VerificationResult.EMAIL_WRONG
+                    verifyResult.emailCorrect && !verifyResult.passwordCorrect -> VerificationResult.PASSWORD_WRONG
                     else -> VerificationResult.BOTH_WRONG
                 }
 
@@ -170,11 +231,18 @@ class ChallengeViewModel(application: Application) : AndroidViewModel(applicatio
                 when (result) {
                     VerificationResult.SUCCESS -> {
                         consecutiveFailures = 0
-                        repository.updateVerification(currentEntry.id, true)
+                        resetGlobalFailureCounter()
+                        repository.updateVerification(currentEntry.id, true, verifyResult.matchedVersionLabel)
                         // Reload entry to get updated streak
                         entry = repository.getEntry(currentEntry.id)
                         showSuccess = true
-                        resultMessage = "Perfect! ✓"
+                        val hasMultipleVersions = currentEntry.passwordVersions.size > 1
+                        resultMessage = if (hasMultipleVersions) {
+                            "Correct! (matched: ${verifyResult.matchedVersionLabel})"
+                        } else {
+                            "Perfect! ✓"
+                        }
+                        MPTWidgetUpdater.updateAll(getApplication())
                     }
 
                     VerificationResult.EMAIL_WRONG -> {
@@ -183,6 +251,7 @@ class ChallengeViewModel(application: Application) : AndroidViewModel(applicatio
                         shakeEmail = true
                         resultMessage = "Password is correct, but the email doesn't match."
                         emailInput = ""
+                        // Email-only failures do not increment panic wipe counter
                         checkFailureThresholds()
                     }
 
@@ -195,6 +264,7 @@ class ChallengeViewModel(application: Application) : AndroidViewModel(applicatio
                         emailInput = ""
                         passwordInput.fill('\u0000')
                         passwordInput = charArrayOf()
+                        incrementGlobalFailureCounter()
                         checkFailureThresholds()
                     }
 
@@ -207,6 +277,7 @@ class ChallengeViewModel(application: Application) : AndroidViewModel(applicatio
                         emailInput = ""
                         passwordInput.fill('\u0000')
                         passwordInput = charArrayOf()
+                        incrementGlobalFailureCounter()
                         checkFailureThresholds()
                     }
                 }
@@ -218,6 +289,44 @@ class ChallengeViewModel(application: Application) : AndroidViewModel(applicatio
                 isVerifying = false
             }
         }
+    }
+
+    private fun resetGlobalFailureCounter() {
+        prefs.edit().putInt(SettingsViewModel.KEY_GLOBAL_CONSECUTIVE_FAILURES, 0).apply()
+    }
+
+    private fun incrementGlobalFailureCounter() {
+        val panicEnabled = prefs.getBoolean(SettingsViewModel.KEY_PANIC_WIPE_ENABLED, false)
+        if (!panicEnabled) return
+
+        val current = prefs.getInt(SettingsViewModel.KEY_GLOBAL_CONSECUTIVE_FAILURES, 0) + 1
+        prefs.edit().putInt(SettingsViewModel.KEY_GLOBAL_CONSECUTIVE_FAILURES, current).apply()
+
+        val threshold = prefs.getInt(SettingsViewModel.KEY_PANIC_WIPE_THRESHOLD, DEFAULT_PANIC_WIPE_THRESHOLD)
+        if (current >= threshold) {
+            triggerPanicWipe()
+        }
+    }
+
+    private fun triggerPanicWipe() {
+        // Silently wipe all data — app should appear as fresh install
+        repository.deleteAllEntries()
+        KeystoreManager.deleteKey()
+        prefs.edit()
+            .remove(SettingsViewModel.KEY_APP_LOCK_ENABLED)
+            .remove(SettingsViewModel.KEY_DEFAULT_REMINDER_DAYS)
+            .remove(SettingsViewModel.KEY_NOTIFICATIONS_ENABLED)
+            .remove(SettingsViewModel.KEY_QUIET_HOURS_START)
+            .remove(SettingsViewModel.KEY_QUIET_HOURS_END)
+            .remove(SettingsViewModel.KEY_THEME_MODE)
+            .remove(SettingsViewModel.KEY_ADAPTIVE_DIFFICULTY)
+            .remove(SettingsViewModel.KEY_PANIC_WIPE_ENABLED)
+            .remove(SettingsViewModel.KEY_PANIC_WIPE_THRESHOLD)
+            .remove(SettingsViewModel.KEY_GLOBAL_CONSECUTIVE_FAILURES)
+            .putBoolean("onboarding_completed", false)
+            .apply()
+
+        panicWipeTriggered = true
     }
 
     private fun checkFailureThresholds() {
@@ -232,12 +341,19 @@ class ChallengeViewModel(application: Application) : AndroidViewModel(applicatio
         if (consecutiveFailures >= 3) {
             repository.resetStreak(currentEntry.id)
             entry = repository.getEntry(currentEntry.id)
+            updateDifficulty()
         }
 
         // After 5 consecutive failures: lock for 60 seconds
         if (consecutiveFailures >= 5) {
             startLockout()
         }
+    }
+
+    private fun updateDifficulty() {
+        val adaptiveEnabled = prefs.getBoolean(SettingsViewModel.KEY_ADAPTIVE_DIFFICULTY, true)
+        val currentEntry = entry ?: return
+        difficultyTier = if (adaptiveEnabled) DifficultyTier.fromStreak(currentEntry.streak) else DifficultyTier.NORMAL
     }
 
     fun showEmailHint() {

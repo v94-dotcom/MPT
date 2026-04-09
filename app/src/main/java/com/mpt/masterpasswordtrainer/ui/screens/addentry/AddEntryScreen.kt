@@ -42,12 +42,18 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.SafetyCheck
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -132,7 +138,7 @@ fun AddEntryScreen(
     // Staggered entrance animation
     var visibleSections by remember { mutableIntStateOf(0) }
     LaunchedEffect(Unit) {
-        for (i in 1..5) {
+        for (i in 1..6) {
             delay(80L)
             visibleSections = i
         }
@@ -432,6 +438,120 @@ fun AddEntryScreen(
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
+
+                    // --- Existing password versions (edit mode) ---
+                    if (viewModel.isEditMode && viewModel.existingVersions.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        HorizontalDivider()
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = "Password versions",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        viewModel.existingVersions.forEach { version ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = version.label,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                                    )
+                                    Text(
+                                        text = "Added ${java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault()).format(java.util.Date(version.createdAt))}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                if (viewModel.existingVersions.size > 1) {
+                                    IconButton(
+                                        onClick = { viewModel.removeExistingVersion(version.id) }
+                                    ) {
+                                        Icon(
+                                            Icons.Filled.Delete,
+                                            contentDescription = "Remove ${version.label}",
+                                            tint = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Text(
+                            text = "Leave password blank above to keep the \"${viewModel.existingVersions.firstOrNull()?.label ?: "Current"}\" version unchanged",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // --- Additional password versions (collapsible) ---
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.showExtraVersions = !viewModel.showExtraVersions },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Additional password versions (optional)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Icon(
+                            imageVector = if (viewModel.showExtraVersions) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                            contentDescription = if (viewModel.showExtraVersions) "Collapse" else "Expand",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    AnimatedVisibility(visible = viewModel.showExtraVersions) {
+                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            viewModel.extraVersions.forEach { ev ->
+                                ExtraVersionFields(
+                                    version = ev,
+                                    errors = viewModel.errors,
+                                    onLabelChange = { viewModel.updateExtraVersionLabel(ev.id, it) },
+                                    onPasswordChange = { viewModel.updateExtraVersionPassword(ev.id, it.toCharArray()) },
+                                    onConfirmPasswordChange = { viewModel.updateExtraVersionConfirmPassword(ev.id, it.toCharArray()) },
+                                    onRemove = { viewModel.removeExtraVersion(ev.id) }
+                                )
+                            }
+
+                            if (viewModel.canAddMoreVersions()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { viewModel.addExtraVersion() }
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Add,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Add another version",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -468,8 +588,51 @@ fun AddEntryScreen(
                 }
             }
 
-            // --- Section 4: Save button ---
+            // --- Section 4: Custom Reminder Message ---
             AnimatedSection(visible = visibleSections >= 4, delayMillis = 240) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "Custom reminder message (optional)",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    OutlinedTextField(
+                        value = viewModel.customReminderMessage,
+                        onValueChange = { viewModel.updateCustomReminderMessage(it) },
+                        placeholder = { Text("e.g. Don't forget your vault password!") },
+                        singleLine = true,
+                        supportingText = {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Shown in the reminder notification instead of the default message",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (viewModel.customReminderMessage.isNotEmpty()) {
+                                    Text(
+                                        text = "${viewModel.customReminderMessage.length}/80",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(
+                            onDone = { focusManager.clearFocus() }
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
+            // --- Section 5: Save button ---
+            AnimatedSection(visible = visibleSections >= 5, delayMillis = 320) {
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Button(
@@ -599,6 +762,102 @@ private fun ColorOption(
                     .background(MaterialTheme.colorScheme.onSurface, CircleShape)
             )
         }
+    }
+}
+
+@Composable
+private fun ExtraVersionFields(
+    version: AddEntryViewModel.ExtraVersion,
+    errors: Map<String, String>,
+    onLabelChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onConfirmPasswordChange: (String) -> Unit,
+    onRemove: () -> Unit
+) {
+    var passwordVisible by remember { mutableStateOf(false) }
+    var confirmVisible by remember { mutableStateOf(false) }
+    var passwordText by remember { mutableStateOf("") }
+    var confirmText by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            OutlinedTextField(
+                value = version.label,
+                onValueChange = onLabelChange,
+                label = { Text("Version label") },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = onRemove) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = "Remove version",
+                    tint = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+
+        OutlinedTextField(
+            value = passwordText,
+            onValueChange = { newValue ->
+                passwordText = newValue
+                onPasswordChange(newValue)
+            },
+            label = { Text("Password") },
+            singleLine = true,
+            isError = errors.containsKey("extraVersion_${version.id}_password"),
+            supportingText = errors["extraVersion_${version.id}_password"]?.let { { Text(it) } },
+            visualTransformation = if (passwordVisible) VisualTransformation.None
+                else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                    Icon(
+                        if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                        contentDescription = if (passwordVisible) "Hide" else "Show"
+                    )
+                }
+            },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        OutlinedTextField(
+            value = confirmText,
+            onValueChange = { newValue ->
+                confirmText = newValue
+                onConfirmPasswordChange(newValue)
+            },
+            label = { Text("Confirm password") },
+            singleLine = true,
+            isError = errors.containsKey("extraVersion_${version.id}_confirmPassword"),
+            supportingText = errors["extraVersion_${version.id}_confirmPassword"]?.let { { Text(it) } }
+                ?: if (confirmText.isNotEmpty() && passwordText == confirmText) {
+                    { Text("Passwords match", color = MaterialTheme.colorScheme.primary) }
+                } else null,
+            visualTransformation = if (confirmVisible) VisualTransformation.None
+                else PasswordVisualTransformation(),
+            trailingIcon = {
+                IconButton(onClick = { confirmVisible = !confirmVisible }) {
+                    Icon(
+                        if (confirmVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                        contentDescription = if (confirmVisible) "Hide" else "Show"
+                    )
+                }
+            },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 

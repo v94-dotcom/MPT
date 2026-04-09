@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
@@ -119,6 +120,14 @@ fun DashboardScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = {
+                        navController.navigate(Routes.GLOBAL_STATS)
+                    }) {
+                        Icon(
+                            imageVector = Icons.Filled.BarChart,
+                            contentDescription = "Statistics"
+                        )
+                    }
                     IconButton(onClick = {
                         navController.navigate(Routes.SETTINGS)
                     }) {
@@ -224,6 +233,11 @@ fun DashboardScreen(
                                 onLongPress = {
                                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                     bottomSheetTarget = dashboardEntry
+                                },
+                                onStatsClick = {
+                                    navController.navigate(
+                                        Routes.entryDetail(dashboardEntry.entry.id)
+                                    )
                                 },
                                 modifier = Modifier
                                     .height(cardHeight)
@@ -353,6 +367,36 @@ fun DashboardScreen(
                     Spacer(modifier = Modifier.width(16.dp))
                     Text(
                         text = "Edit entry",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+
+                // View stats action
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            scope.launch {
+                                sheetState.hide()
+                                bottomSheetTarget = null
+                                navController.navigate(
+                                    Routes.entryDetail(target.entry.id)
+                                )
+                            }
+                        }
+                        .padding(vertical = 14.dp, horizontal = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.BarChart,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = "View stats",
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }

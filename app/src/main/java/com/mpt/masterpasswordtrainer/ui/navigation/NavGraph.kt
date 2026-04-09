@@ -12,6 +12,8 @@ import androidx.navigation.navDeepLink
 import com.mpt.masterpasswordtrainer.ui.screens.addentry.AddEntryScreen
 import com.mpt.masterpasswordtrainer.ui.screens.challenge.ChallengeScreen
 import com.mpt.masterpasswordtrainer.ui.screens.dashboard.DashboardScreen
+import com.mpt.masterpasswordtrainer.ui.screens.entrydetail.EntryDetailScreen
+import com.mpt.masterpasswordtrainer.ui.screens.globalstats.GlobalStatsScreen
 import com.mpt.masterpasswordtrainer.ui.screens.onboarding.OnboardingScreen
 import com.mpt.masterpasswordtrainer.ui.screens.settings.SettingsScreen
 
@@ -21,6 +23,8 @@ object Routes {
     const val ADD_ENTRY = "add_entry?isFromOnboarding={isFromOnboarding}&entryId={entryId}"
     const val CHALLENGE = "challenge/{entryId}"
     const val SETTINGS = "settings"
+    const val ENTRY_DETAIL = "entry_detail/{entryId}"
+    const val GLOBAL_STATS = "global_stats"
 
     fun onboarding(isReplay: Boolean = false) = "onboarding?isReplay=$isReplay"
 
@@ -30,6 +34,7 @@ object Routes {
     }
 
     fun challenge(entryId: String) = "challenge/$entryId"
+    fun entryDetail(entryId: String) = "entry_detail/$entryId"
 }
 
 @Composable
@@ -92,6 +97,18 @@ fun MPTNavGraph(
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(navController = navController)
+        }
+        composable(Routes.GLOBAL_STATS) {
+            GlobalStatsScreen(navController = navController)
+        }
+        composable(
+            route = Routes.ENTRY_DETAIL,
+            arguments = listOf(
+                navArgument("entryId") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val entryId = backStackEntry.arguments?.getString("entryId") ?: ""
+            EntryDetailScreen(navController = navController, entryId = entryId)
         }
     }
 }

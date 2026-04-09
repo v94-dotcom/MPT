@@ -1,6 +1,9 @@
 package com.mpt.masterpasswordtrainer.ui.screens.settings
 
 import android.content.pm.PackageManager
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -13,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,20 +25,27 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
@@ -53,6 +64,7 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,11 +75,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import com.mpt.masterpasswordtrainer.data.backup.BackupManager
 import com.mpt.masterpasswordtrainer.ui.navigation.Routes
+import com.mpt.masterpasswordtrainer.ui.screens.settings.SettingsViewModel.Companion.PANIC_WIPE_THRESHOLD_OPTIONS
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -81,11 +99,97 @@ fun SettingsScreen(
     val quietHoursStart by viewModel.quietHoursStart.collectAsState()
     val quietHoursEnd by viewModel.quietHoursEnd.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
+    val adaptiveDifficulty by viewModel.adaptiveDifficulty.collectAsState()
+
+    val panicWipeEnabled by viewModel.panicWipeEnabled.collectAsState()
+    val panicWipeThreshold by viewModel.panicWipeThreshold.collectAsState()
+
+    val backupBytes by viewModel.backupBytes.collectAsState()
+    val isExporting by viewModel.isExporting.collectAsState()
+    val isImporting by viewModel.isImporting.collectAsState()
+    val importResult by viewModel.importResult.collectAsState()
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var deleteConfirmText by remember { mutableStateOf("") }
+    var showPanicWipeConfirmDialog by remember { mutableStateOf(false) }
     var showStartTimePicker by remember { mutableStateOf(false) }
     var showEndTimePicker by remember { mutableStateOf(false) }
+
+    // Backup & Restore state
+    var showExportDialog by remember { mutableStateOf(false) }
+    var showImportWarningDialog by remember { mutableStateOf(false) }
+    var showImportPasswordDialog by remember { mutableStateOf(false) }
+    var importFileBytes by remember { mutableStateOf<ByteArray?>(null) }
+    val context = LocalContext.current
+
+    // File save picker for export
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        if (uri != null) {
+            val bytes = backupBytes
+            if (bytes != null) {
+                try {
+                    context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                    Toast.makeText(context, "Backup saved successfully", Toast.LENGTH_SHORT).show()
+                } catch (_: Exception) {
+                    Toast.makeText(context, "Failed to save backup", Toast.LENGTH_SHORT).show()
+                }
+            }
+            viewModel.clearBackupBytes()
+        }
+    }
+
+    // File open picker for import
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (bytes != null && bytes.isNotEmpty()) {
+                    importFileBytes = bytes
+                    showImportPasswordDialog = true
+                } else {
+                    Toast.makeText(context, "Could not read backup file", Toast.LENGTH_SHORT).show()
+                }
+            } catch (_: Exception) {
+                Toast.makeText(context, "Failed to open backup file", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // Launch file save picker when backup bytes become available
+    LaunchedEffect(backupBytes) {
+        val bytes = backupBytes
+        if (bytes != null) {
+            val date = LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+            exportLauncher.launch("mpt_backup_$date.mptbackup")
+        }
+    }
+
+    // Handle import result
+    LaunchedEffect(importResult) {
+        when (val result = importResult) {
+            is BackupManager.ImportResult.Success -> {
+                Toast.makeText(context, "Backup restored — ${result.entryCount} entries imported", Toast.LENGTH_LONG).show()
+                viewModel.clearImportResult()
+            }
+            is BackupManager.ImportResult.WrongPassword -> {
+                Toast.makeText(context, "Incorrect password or corrupted backup file. Try again.", Toast.LENGTH_LONG).show()
+                viewModel.clearImportResult()
+            }
+            is BackupManager.ImportResult.CorruptedFile -> {
+                Toast.makeText(context, "Corrupted or invalid backup file", Toast.LENGTH_LONG).show()
+                viewModel.clearImportResult()
+            }
+            is BackupManager.ImportResult.Error -> {
+                Toast.makeText(context, "Restore failed. Please try again.", Toast.LENGTH_LONG).show()
+                viewModel.clearImportResult()
+            }
+            null -> {}
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -118,6 +222,62 @@ fun SettingsScreen(
                     )
                 }
             )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            SettingsRow(
+                title = "Panic wipe",
+                subtitle = "Auto-delete all data after consecutive failures",
+                trailing = {
+                    Switch(
+                        checked = panicWipeEnabled,
+                        onCheckedChange = { enabled ->
+                            if (enabled) {
+                                showPanicWipeConfirmDialog = true
+                            } else {
+                                viewModel.setPanicWipeEnabled(false)
+                            }
+                        }
+                    )
+                }
+            )
+
+            AnimatedVisibility(visible = panicWipeEnabled, enter = fadeIn(), exit = fadeOut()) {
+                Column {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Wipe after failed attempts",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        PANIC_WIPE_THRESHOLD_OPTIONS.forEachIndexed { index, threshold ->
+                            SegmentedButton(
+                                shape = SegmentedButtonDefaults.itemShape(index = index, count = PANIC_WIPE_THRESHOLD_OPTIONS.size),
+                                onClick = { viewModel.setPanicWipeThreshold(threshold) },
+                                selected = panicWipeThreshold == threshold
+                            ) {
+                                Text("$threshold")
+                            }
+                        }
+                    }
+                    Text(
+                        text = "All entries will be permanently deleted after $panicWipeThreshold consecutive failed attempts across all entries. Successful verification resets the counter.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                    if (!viewModel.hasBackup()) {
+                        Text(
+                            text = "Consider creating a backup first. Panic wipe will permanently delete all data.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                }
+            }
 
             SettingsDivider()
 
@@ -233,6 +393,21 @@ fun SettingsScreen(
 
             SettingsDivider()
 
+            // --- Challenge Section ---
+            SectionHeader(icon = { Icon(Icons.Filled.FitnessCenter, contentDescription = null) }, title = "Challenge")
+            SettingsRow(
+                title = "Adaptive difficulty",
+                subtitle = "Increases challenge difficulty as your streak grows",
+                trailing = {
+                    Switch(
+                        checked = adaptiveDifficulty,
+                        onCheckedChange = { viewModel.setAdaptiveDifficulty(it) }
+                    )
+                }
+            )
+
+            SettingsDivider()
+
             // --- Help Section ---
             SectionHeader(icon = { Icon(Icons.Filled.AutoStories, contentDescription = null) }, title = "Help")
             Row(
@@ -259,6 +434,42 @@ fun SettingsScreen(
 
             SettingsDivider()
 
+            // --- Backup & Restore Section ---
+            SectionHeader(icon = { Icon(Icons.Filled.SwapVert, contentDescription = null) }, title = "Backup & Restore")
+            FilledTonalButton(
+                onClick = { showExportDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isExporting
+            ) {
+                if (isExporting) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Exporting...")
+                } else {
+                    Icon(Icons.Filled.CloudUpload, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Export encrypted backup")
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            FilledTonalButton(
+                onClick = { showImportWarningDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isImporting
+            ) {
+                if (isImporting) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Importing...")
+                } else {
+                    Icon(Icons.Filled.CloudDownload, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Import backup")
+                }
+            }
+
+            SettingsDivider()
+
             // --- Data Section ---
             SectionHeader(icon = { Icon(Icons.Filled.DeleteForever, contentDescription = null) }, title = "Data")
             FilledTonalButton(
@@ -278,7 +489,6 @@ fun SettingsScreen(
 
             // --- About Section ---
             SectionHeader(icon = { Icon(Icons.Filled.Info, contentDescription = null) }, title = "About")
-            val context = LocalContext.current
             val versionName = remember {
                 try {
                     context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0"
@@ -404,6 +614,97 @@ fun SettingsScreen(
             onDismiss = { showEndTimePicker = false }
         )
     }
+
+    // --- Export Backup Dialog ---
+    if (showExportDialog) {
+        BackupPasswordDialog(
+            title = "Create backup password",
+            confirmLabel = "Create Backup",
+            isConfirm = true,
+            onConfirm = { password ->
+                showExportDialog = false
+                viewModel.createBackup(password)
+            },
+            onDismiss = { showExportDialog = false }
+        )
+    }
+
+    // --- Import Warning Dialog ---
+    if (showImportWarningDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportWarningDialog = false },
+            icon = { Icon(Icons.Filled.CloudDownload, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Replace all data?") },
+            text = {
+                Text("Importing a backup will REPLACE all current data. This cannot be undone. Continue?")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showImportWarningDialog = false
+                        importLauncher.launch(arrayOf("*/*"))
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Continue")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportWarningDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // --- Panic Wipe Confirmation Dialog ---
+    if (showPanicWipeConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showPanicWipeConfirmDialog = false },
+            icon = { Icon(Icons.Filled.DeleteForever, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Enable panic wipe?") },
+            text = {
+                Text("Are you sure? If you fail $panicWipeThreshold consecutive times, all your data will be permanently deleted with no way to recover it. Make sure you have a backup.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showPanicWipeConfirmDialog = false
+                        viewModel.setPanicWipeEnabled(true)
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Enable")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPanicWipeConfirmDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // --- Import Password Dialog ---
+    if (showImportPasswordDialog) {
+        BackupPasswordDialog(
+            title = "Enter backup password",
+            confirmLabel = "Restore",
+            isConfirm = false,
+            onConfirm = { password ->
+                showImportPasswordDialog = false
+                val bytes = importFileBytes
+                if (bytes != null) {
+                    viewModel.importBackup(bytes, password)
+                    importFileBytes = null
+                }
+            },
+            onDismiss = {
+                showImportPasswordDialog = false
+                importFileBytes = null
+            }
+        )
+    }
 }
 
 @Composable
@@ -479,6 +780,82 @@ private fun TimePickerDialog(
         confirmButton = {
             TextButton(onClick = { onConfirm(state.hour) }) {
                 Text("OK")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+private fun BackupPasswordDialog(
+    title: String,
+    confirmLabel: String,
+    isConfirm: Boolean,
+    onConfirm: (CharArray) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
+    val passwordsMatch = !isConfirm || password == confirmPassword
+    val canConfirm = password.isNotEmpty() && (!isConfirm || (confirmPassword.isNotEmpty() && passwordsMatch))
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                if (isConfirm) {
+                    Text(
+                        text = "This password encrypts your backup file. You'll need it to restore. It can be different from your master passwords.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                }
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password") },
+                    singleLine = true,
+                    visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                            Icon(
+                                if (passwordVisible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                contentDescription = if (passwordVisible) "Hide password" else "Show password"
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (isConfirm) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = confirmPassword,
+                        onValueChange = { confirmPassword = it },
+                        label = { Text("Confirm password") },
+                        singleLine = true,
+                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        isError = confirmPassword.isNotEmpty() && !passwordsMatch,
+                        supportingText = if (confirmPassword.isNotEmpty() && !passwordsMatch) {
+                            { Text("Passwords don't match") }
+                        } else null,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(password.toCharArray()) },
+                enabled = canConfirm
+            ) {
+                Text(confirmLabel)
             }
         },
         dismissButton = {

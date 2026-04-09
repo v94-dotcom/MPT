@@ -10,6 +10,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -37,6 +38,8 @@ import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Mail
+import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
@@ -78,6 +81,7 @@ import androidx.navigation.NavHostController
 import com.mpt.masterpasswordtrainer.ui.components.SuccessAnimation
 import com.mpt.masterpasswordtrainer.ui.components.getIconForName
 import com.mpt.masterpasswordtrainer.ui.components.shakeAnimation
+import com.mpt.masterpasswordtrainer.ui.navigation.Routes
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -87,6 +91,15 @@ fun ChallengeScreen(
     entryId: String,
     viewModel: ChallengeViewModel = viewModel()
 ) {
+    // Silent navigation on panic wipe — app appears as fresh install
+    LaunchedEffect(viewModel.panicWipeTriggered) {
+        if (viewModel.panicWipeTriggered) {
+            navController.navigate(Routes.onboarding()) {
+                popUpTo(0) { inclusive = true }
+            }
+        }
+    }
+
     LaunchedEffect(entryId) {
         viewModel.loadEntry(entryId)
     }
@@ -183,10 +196,11 @@ fun ChallengeScreen(
                     Spacer(modifier = Modifier.height(24.dp))
 
                     Text(
-                        text = "Perfect! ✓",
+                        text = viewModel.resultMessage ?: "Perfect! ✓",
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF43A047)
+                        color = Color(0xFF43A047),
+                        textAlign = TextAlign.Center
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -266,49 +280,88 @@ fun ChallengeScreen(
                         textAlign = TextAlign.Center
                     )
 
-                    Spacer(modifier = Modifier.height(32.dp))
-
-                    if (viewModel.hasEmail) {
-                        // Email field with shake
-                        val emailBorderColor by animateColorAsState(
-                            targetValue = when (viewModel.verificationResult) {
-                                VerificationResult.EMAIL_WRONG -> Color(0xFFFFA000)
-                                VerificationResult.BOTH_WRONG -> Color(0xFFE53935)
-                                else -> MaterialTheme.colorScheme.outline
-                            },
-                            label = "emailBorder"
-                        )
-
-                        OutlinedTextField(
-                            value = viewModel.emailInput,
-                            onValueChange = { viewModel.updateEmailInput(it) },
-                            label = { Text("Email / Username") },
-                            singleLine = true,
-                            enabled = !viewModel.isLocked && !viewModel.isVerifying,
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Text,
-                                imeAction = ImeAction.Next
-                            ),
-                            keyboardActions = KeyboardActions(
-                                onNext = { passwordFocusRequester.requestFocus() }
-                            ),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = emailBorderColor,
-                                unfocusedBorderColor = emailBorderColor
-                            ),
+                    // Difficulty banner
+                    val difficulty = viewModel.difficultyTier
+                    AnimatedVisibility(
+                        visible = difficulty != DifficultyTier.NORMAL,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        Row(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(emailFocusRequester)
-                                .shakeAnimation(
-                                    trigger = viewModel.shakeEmail,
-                                    onComplete = { viewModel.onShakeEmailComplete() }
-                                )
-                        )
-
-                        Spacer(modifier = Modifier.height(16.dp))
+                                .padding(top = 16.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(accentColor.copy(alpha = 0.12f))
+                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (difficulty == DifficultyTier.ADVANCED) Icons.Filled.Psychology else Icons.Filled.SwapVert,
+                                contentDescription = null,
+                                tint = accentColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (difficulty == DifficultyTier.ADVANCED) "Delayed recall — advanced mode" else "Reversed order — intermediate mode",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = accentColor
+                            )
+                        }
                     }
 
-                    // Password field with shake
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    // Delay countdown overlay for advanced mode
+                    AnimatedVisibility(
+                        visible = viewModel.isDelayActive,
+                        enter = fadeIn(),
+                        exit = fadeOut()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(
+                                    progress = { viewModel.delayCountdown / DifficultyTier.ADVANCED_DELAY_SECONDS.toFloat() },
+                                    modifier = Modifier.size(80.dp),
+                                    color = accentColor,
+                                    strokeWidth = 4.dp
+                                )
+                                Text(
+                                    text = "${viewModel.delayCountdown}",
+                                    style = MaterialTheme.typography.headlineLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = accentColor
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "Recall your credentials...",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    // Reversed field order: intermediate/advanced show password first
+                    val reversed = difficulty != DifficultyTier.NORMAL
+                    val fieldsEnabled = !viewModel.isLocked && !viewModel.isVerifying && !viewModel.isDelayActive
+
+                    // Email field
+                    val emailBorderColor by animateColorAsState(
+                        targetValue = when (viewModel.verificationResult) {
+                            VerificationResult.EMAIL_WRONG -> Color(0xFFFFA000)
+                            VerificationResult.BOTH_WRONG -> Color(0xFFE53935)
+                            else -> MaterialTheme.colorScheme.outline
+                        },
+                        label = "emailBorder"
+                    )
+
+                    // Password field state
                     val passwordBorderColor by animateColorAsState(
                         targetValue = when (viewModel.verificationResult) {
                             VerificationResult.PASSWORD_WRONG,
@@ -318,56 +371,99 @@ fun ChallengeScreen(
                         label = "passwordBorder"
                     )
 
-                    // Password as string for display, backed by CharArray
                     var passwordText by remember { mutableStateOf("") }
 
-                    // Sync passwordText when viewModel clears it
                     LaunchedEffect(viewModel.passwordInput.size) {
                         if (viewModel.passwordInput.isEmpty()) {
                             passwordText = ""
                         }
                     }
 
-                    OutlinedTextField(
-                        value = passwordText,
-                        onValueChange = { newValue ->
-                            passwordText = newValue
-                            viewModel.updatePasswordInput(newValue.toCharArray())
-                        },
-                        label = { Text("Master password") },
-                        singleLine = true,
-                        enabled = !viewModel.isLocked && !viewModel.isVerifying,
-                        visualTransformation = if (passwordVisible)
-                            VisualTransformation.None else PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Password,
-                            imeAction = ImeAction.Done
-                        ),
-                        keyboardActions = KeyboardActions(
-                            onDone = { viewModel.verify() }
-                        ),
-                        trailingIcon = {
-                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                Icon(
-                                    if (passwordVisible) Icons.Filled.VisibilityOff
-                                    else Icons.Filled.Visibility,
-                                    contentDescription = if (passwordVisible) "Hide password"
-                                    else "Show password"
-                                )
-                            }
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = passwordBorderColor,
-                            unfocusedBorderColor = passwordBorderColor
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(passwordFocusRequester)
-                            .shakeAnimation(
-                                trigger = viewModel.shakePassword,
-                                onComplete = { viewModel.onShakePasswordComplete() }
+                    // Composable lambdas for reordering
+                    val emailField: @Composable () -> Unit = {
+                        if (viewModel.hasEmail) {
+                            OutlinedTextField(
+                                value = viewModel.emailInput,
+                                onValueChange = { viewModel.updateEmailInput(it) },
+                                label = { Text("Email / Username") },
+                                singleLine = true,
+                                enabled = fieldsEnabled,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Text,
+                                    imeAction = if (reversed) ImeAction.Done else ImeAction.Next
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onNext = { passwordFocusRequester.requestFocus() },
+                                    onDone = { if (reversed) viewModel.verify() }
+                                ),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = emailBorderColor,
+                                    unfocusedBorderColor = emailBorderColor
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusRequester(emailFocusRequester)
+                                    .shakeAnimation(
+                                        trigger = viewModel.shakeEmail,
+                                        onComplete = { viewModel.onShakeEmailComplete() }
+                                    )
                             )
-                    )
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+                    }
+
+                    val passwordField: @Composable () -> Unit = {
+                        OutlinedTextField(
+                            value = passwordText,
+                            onValueChange = { newValue ->
+                                passwordText = newValue
+                                viewModel.updatePasswordInput(newValue.toCharArray())
+                            },
+                            label = { Text("Master password") },
+                            singleLine = true,
+                            enabled = fieldsEnabled,
+                            visualTransformation = if (passwordVisible)
+                                VisualTransformation.None else PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Password,
+                                imeAction = if (reversed) ImeAction.Next else ImeAction.Done
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onNext = { if (reversed) emailFocusRequester.requestFocus() },
+                                onDone = { if (!reversed) viewModel.verify() }
+                            ),
+                            trailingIcon = {
+                                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                    Icon(
+                                        if (passwordVisible) Icons.Filled.VisibilityOff
+                                        else Icons.Filled.Visibility,
+                                        contentDescription = if (passwordVisible) "Hide password"
+                                        else "Show password"
+                                    )
+                                }
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = passwordBorderColor,
+                                unfocusedBorderColor = passwordBorderColor
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(passwordFocusRequester)
+                                .shakeAnimation(
+                                    trigger = viewModel.shakePassword,
+                                    onComplete = { viewModel.onShakePasswordComplete() }
+                                )
+                        )
+                    }
+
+                    if (reversed) {
+                        passwordField()
+                        Spacer(modifier = Modifier.height(16.dp))
+                        emailField()
+                    } else {
+                        emailField()
+                        passwordField()
+                    }
 
                     Spacer(modifier = Modifier.height(8.dp))
 
@@ -461,7 +557,7 @@ fun ChallengeScreen(
                     } else {
                         Button(
                             onClick = { viewModel.verify() },
-                            enabled = !viewModel.isVerifying &&
+                            enabled = !viewModel.isVerifying && !viewModel.isDelayActive &&
                                     (!viewModel.hasEmail || viewModel.emailInput.isNotBlank()) &&
                                     passwordText.isNotEmpty(),
                             modifier = Modifier

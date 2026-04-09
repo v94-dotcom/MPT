@@ -12,6 +12,7 @@ import com.mpt.masterpasswordtrainer.ui.components.EntryStatus
 import com.mpt.masterpasswordtrainer.ui.components.calculateStatus
 import com.mpt.masterpasswordtrainer.ui.components.daysSinceLastVerified
 import com.mpt.masterpasswordtrainer.ui.components.maskEmail
+import com.mpt.masterpasswordtrainer.widget.MPTWidgetUpdater
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -86,6 +87,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
             _entries.value = result
             _overdueCount.value = result.count { it.status == EntryStatus.RED }
+            MPTWidgetUpdater.updateAll(getApplication())
         }
     }
 

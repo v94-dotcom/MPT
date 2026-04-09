@@ -10,6 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mpt.masterpasswordtrainer.data.model.PasswordEntry
+import com.mpt.masterpasswordtrainer.data.model.PasswordVersion
 import com.mpt.masterpasswordtrainer.data.repository.PasswordRepository
 import com.mpt.masterpasswordtrainer.data.security.CryptoUtil
 import com.mpt.masterpasswordtrainer.data.security.HashUtil
@@ -47,6 +48,24 @@ class AddEntryViewModel(application: Application) : AndroidViewModel(application
         private set
     var passwordHint by mutableStateOf("")
         private set
+    var customReminderMessage by mutableStateOf("")
+        private set
+
+    // Additional password versions (index 0 is version 2, index 1 is version 3)
+    data class ExtraVersion(
+        val id: String = UUID.randomUUID().toString(),
+        val label: String = "Previous",
+        val password: CharArray = charArrayOf(),
+        val confirmPassword: CharArray = charArrayOf()
+    )
+
+    var extraVersions by mutableStateOf<List<ExtraVersion>>(emptyList())
+        private set
+    var showExtraVersions by mutableStateOf(false)
+
+    // In edit mode, existing password versions (read-only display)
+    var existingVersions by mutableStateOf<List<PasswordVersion>>(emptyList())
+        private set
 
     // UI state
     var isLoading by mutableStateOf(false)
@@ -72,6 +91,8 @@ class AddEntryViewModel(application: Application) : AndroidViewModel(application
         serviceColor = entry.serviceColor
         reminderDays = entry.reminderDays
         passwordHint = entry.passwordHint
+        customReminderMessage = entry.customReminderMessage
+        existingVersions = entry.passwordVersions
 
         // Decrypt email to pre-fill
         try {
@@ -138,6 +159,65 @@ class AddEntryViewModel(application: Application) : AndroidViewModel(application
         passwordHint = value.take(100)
     }
 
+    fun updateCustomReminderMessage(value: String) {
+        customReminderMessage = value.take(80)
+    }
+
+    fun addExtraVersion() {
+        val totalVersions = (if (isEditMode) existingVersions.size else 1) + extraVersions.size
+        if (totalVersions >= 3) return
+        val defaultLabel = when (extraVersions.size) {
+            0 -> if (isEditMode && existingVersions.size >= 2) "Legacy" else "Previous"
+            else -> "Legacy"
+        }
+        extraVersions = extraVersions + ExtraVersion(label = defaultLabel)
+    }
+
+    fun removeExtraVersion(id: String) {
+        val version = extraVersions.find { it.id == id }
+        version?.password?.fill('\u0000')
+        version?.confirmPassword?.fill('\u0000')
+        extraVersions = extraVersions.filter { it.id != id }
+    }
+
+    fun updateExtraVersionLabel(id: String, label: String) {
+        extraVersions = extraVersions.map {
+            if (it.id == id) it.copy(label = label.take(20)) else it
+        }
+    }
+
+    fun updateExtraVersionPassword(id: String, value: CharArray) {
+        extraVersions = extraVersions.map {
+            if (it.id == id) {
+                it.password.fill('\u0000')
+                it.copy(password = value)
+            } else it
+        }
+        clearError("extraVersion_${id}_password")
+        clearError("extraVersion_${id}_confirmPassword")
+    }
+
+    fun updateExtraVersionConfirmPassword(id: String, value: CharArray) {
+        extraVersions = extraVersions.map {
+            if (it.id == id) {
+                it.confirmPassword.fill('\u0000')
+                it.copy(confirmPassword = value)
+            } else it
+        }
+        clearError("extraVersion_${id}_confirmPassword")
+    }
+
+    fun removeExistingVersion(versionId: String) {
+        // Cannot delete the last remaining version
+        if (existingVersions.size <= 1) return
+        existingVersions = existingVersions.filter { it.id != versionId }
+    }
+
+    fun canAddMoreVersions(): Boolean {
+        val totalVersions = (if (isEditMode) existingVersions.size else 1) + extraVersions.size
+        return totalVersions < 3
+    }
+
     fun save(isFromOnboarding: Boolean, onSuccess: () -> Unit) {
         val validationErrors = validate()
         if (validationErrors.isNotEmpty()) {
@@ -153,21 +233,36 @@ class AddEntryViewModel(application: Application) : AndroidViewModel(application
                     val key = KeystoreManager.getOrCreateKey()
                     val (encryptedEmail, emailIV) = CryptoUtil.encrypt(email.trim(), key)
 
+                    // Build extra password versions (new versions added in this save)
+                    val newExtraVersions = extraVersions.filter { it.password.isNotEmpty() }.map { ev ->
+                        val salt = HashUtil.generateSalt()
+                        val hash = HashUtil.hashPassword(ev.password.copyOf(), salt)
+                        PasswordVersion(
+                            id = ev.id,
+                            label = ev.label.trim().ifEmpty { "Version" },
+                            passwordHash = hash,
+                            passwordSalt = salt,
+                            createdAt = System.currentTimeMillis()
+                        )
+                    }
+
                     if (isEditMode && existingEntry != null) {
                         val existing = existingEntry!!
-                        val passwordChanged = password.isNotEmpty()
 
-                        val finalHash: String
-                        val finalSalt: String
-                        if (passwordChanged) {
+                        // Start with existing versions (possibly filtered by removals)
+                        val keptVersions = existingVersions.toMutableList()
+
+                        // If primary password field was filled, update the first version's hash
+                        if (password.isNotEmpty() && keptVersions.isNotEmpty()) {
                             val salt = HashUtil.generateSalt()
-                            val passwordCopy = password.copyOf()
-                            finalHash = HashUtil.hashPassword(passwordCopy, salt)
-                            finalSalt = salt
-                        } else {
-                            finalHash = existing.passwordHash
-                            finalSalt = existing.passwordSalt
+                            val hash = HashUtil.hashPassword(password.copyOf(), salt)
+                            keptVersions[0] = keptVersions[0].copy(
+                                passwordHash = hash,
+                                passwordSalt = salt
+                            )
                         }
+
+                        val finalVersions = keptVersions + newExtraVersions
 
                         existing.copy(
                             serviceName = serviceName.trim(),
@@ -175,15 +270,27 @@ class AddEntryViewModel(application: Application) : AndroidViewModel(application
                             serviceIcon = serviceIcon,
                             encryptedEmail = encryptedEmail,
                             emailIV = emailIV,
-                            passwordHash = finalHash,
-                            passwordSalt = finalSalt,
+                            passwordHash = "",
+                            passwordSalt = "",
+                            passwordVersions = finalVersions,
                             reminderDays = reminderDays,
-                            passwordHint = passwordHint.trim()
+                            passwordHint = passwordHint.trim(),
+                            customReminderMessage = customReminderMessage.trim()
                         )
                     } else {
                         val salt = HashUtil.generateSalt()
                         val passwordCopy = password.copyOf()
                         val hash = HashUtil.hashPassword(passwordCopy, salt)
+
+                        val primaryVersion = PasswordVersion(
+                            id = UUID.randomUUID().toString(),
+                            label = "Current",
+                            passwordHash = hash,
+                            passwordSalt = salt,
+                            createdAt = System.currentTimeMillis()
+                        )
+
+                        val allVersions = listOf(primaryVersion) + newExtraVersions
 
                         PasswordEntry(
                             id = UUID.randomUUID().toString(),
@@ -192,12 +299,12 @@ class AddEntryViewModel(application: Application) : AndroidViewModel(application
                             serviceIcon = serviceIcon,
                             encryptedEmail = encryptedEmail,
                             emailIV = emailIV,
-                            passwordHash = hash,
-                            passwordSalt = salt,
+                            passwordVersions = allVersions,
                             reminderDays = reminderDays,
                             lastVerified = System.currentTimeMillis(),
                             createdAt = System.currentTimeMillis(),
-                            passwordHint = passwordHint.trim()
+                            passwordHint = passwordHint.trim(),
+                            customReminderMessage = customReminderMessage.trim()
                         )
                     }
                 }
@@ -209,6 +316,11 @@ class AddEntryViewModel(application: Application) : AndroidViewModel(application
                 confirmPassword.fill('\u0000')
                 password = charArrayOf()
                 confirmPassword = charArrayOf()
+                extraVersions.forEach { ev ->
+                    ev.password.fill('\u0000')
+                    ev.confirmPassword.fill('\u0000')
+                }
+                extraVersions = emptyList()
                 email = ""
 
                 if (isFromOnboarding) {
@@ -246,6 +358,16 @@ class AddEntryViewModel(application: Application) : AndroidViewModel(application
             errs["confirmPassword"] = "Passwords don't match"
         }
 
+        // Validate extra password versions
+        for (ev in extraVersions) {
+            if (ev.password.isEmpty()) {
+                errs["extraVersion_${ev.id}_password"] = "Password is required"
+            }
+            if (ev.password.isNotEmpty() && !ev.password.contentEquals(ev.confirmPassword)) {
+                errs["extraVersion_${ev.id}_confirmPassword"] = "Passwords don't match"
+            }
+        }
+
         return errs
     }
 
@@ -259,5 +381,9 @@ class AddEntryViewModel(application: Application) : AndroidViewModel(application
         super.onCleared()
         password.fill('\u0000')
         confirmPassword.fill('\u0000')
+        extraVersions.forEach { ev ->
+            ev.password.fill('\u0000')
+            ev.confirmPassword.fill('\u0000')
+        }
     }
 }
