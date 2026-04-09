@@ -1,0 +1,12 @@
+MPT reminds you every few days to type your master password and email from memory, verifying correctness against a securely stored hash.
+
+Your password is hashed with Argon2id and can never be recovered — not even by this app. Emails are encrypted with AES-256-GCM via Android Keystore. The app has zero internet permissions and never connects to any network.
+
+Features:
+- Periodic password recall challenges
+- Streak tracking and verification history
+- Adaptive difficulty scaling
+- Home screen widgets
+- Encrypted backup and restore
+- Biometric app lock
+- Material You dynamic theming

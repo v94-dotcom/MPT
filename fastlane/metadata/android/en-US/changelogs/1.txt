@@ -1,0 +1,1 @@
+Initial release with password training, streak tracking, encrypted backup, widgets, and adaptive difficulty.
