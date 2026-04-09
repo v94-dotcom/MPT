@@ -61,7 +61,7 @@ Get it right? Your streak grows. Forget? You'll know *before* it matters.
 
 MPT is built with a security-first architecture. Your credentials never leave your device.
 
-
+| | |
 |---|---|
 | **Zero Network** | No internet permission declared. Not even requested. `usesCleartextTraffic="false"` enforced. |
 | **Password Hashing** | Argon2id (winner of the Password Hashing Competition) — memory-hard, GPU/ASIC resistant. Your password is **never stored**, only a one-way hash. |
