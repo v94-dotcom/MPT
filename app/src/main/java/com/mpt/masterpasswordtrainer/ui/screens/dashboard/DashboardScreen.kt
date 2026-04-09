@@ -407,7 +407,7 @@ fun DashboardScreen(
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.resetAfterKeyInvalidation()
-                    navController.navigate(Routes.ONBOARDING) {
+                    navController.navigate(Routes.onboarding()) {
                         popUpTo(0) { inclusive = true }
                     }
                 }) {

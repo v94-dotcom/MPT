@@ -15,6 +15,7 @@ import com.mpt.masterpasswordtrainer.data.security.HashUtil
 import com.mpt.masterpasswordtrainer.data.security.KeyInvalidatedException
 import com.mpt.masterpasswordtrainer.data.security.KeystoreManager
 import com.mpt.masterpasswordtrainer.ui.components.daysSinceLastVerified
+import com.mpt.masterpasswordtrainer.ui.components.maskEmail
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -70,6 +71,12 @@ class ChallengeViewModel(application: Application) : AndroidViewModel(applicatio
         private set
     var maskedEmailHint by mutableStateOf<String?>(null)
         private set
+    var hasEmail by mutableStateOf(true)
+        private set
+    var hasPasswordHint by mutableStateOf(false)
+        private set
+    var passwordHintRevealed by mutableStateOf<String?>(null)
+        private set
 
     // Result message
     var resultMessage by mutableStateOf<String?>(null)
@@ -79,6 +86,17 @@ class ChallengeViewModel(application: Application) : AndroidViewModel(applicatio
         val loaded = repository.getEntry(entryId) ?: return
         entry = loaded
         daysElapsed = daysSinceLastVerified(loaded)
+
+        // Check if entry has email stored
+        try {
+            val key = KeystoreManager.getOrCreateKey()
+            val decryptedEmail = CryptoUtil.decrypt(loaded.encryptedEmail, loaded.emailIV, key)
+            hasEmail = decryptedEmail.isNotEmpty()
+        } catch (_: Exception) {
+            hasEmail = true // Assume has email on decryption failure
+        }
+
+        hasPasswordHint = loaded.passwordHint.isNotEmpty()
     }
 
     fun updateEmailInput(value: String) {
@@ -112,14 +130,19 @@ class ChallengeViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             try {
                 val (emailCorrect, passwordCorrect) = withContext(Dispatchers.Default) {
-                    // Decrypt stored email and compare
                     val key = KeystoreManager.getOrCreateKey()
-                    val storedEmail = CryptoUtil.decrypt(
-                        currentEntry.encryptedEmail,
-                        currentEntry.emailIV,
-                        key
-                    )
-                    val emailMatch = storedEmail.trim().equals(emailInput.trim(), ignoreCase = true)
+
+                    // Compare email (skip if no email stored)
+                    val emailMatch = if (hasEmail) {
+                        val storedEmail = CryptoUtil.decrypt(
+                            currentEntry.encryptedEmail,
+                            currentEntry.emailIV,
+                            key
+                        )
+                        storedEmail.trim().equals(emailInput.trim(), ignoreCase = true)
+                    } else {
+                        true
+                    }
 
                     // Hash input password and compare
                     val passwordCopy = passwordInput.copyOf()
@@ -200,8 +223,8 @@ class ChallengeViewModel(application: Application) : AndroidViewModel(applicatio
     private fun checkFailureThresholds() {
         val currentEntry = entry ?: return
 
-        // After 3 consecutive failures: offer email hint
-        if (consecutiveFailures >= 3) {
+        // After 3 consecutive failures: offer hints
+        if (consecutiveFailures >= 3 && (hasEmail || hasPasswordHint)) {
             showHintOption = true
         }
 
@@ -218,6 +241,7 @@ class ChallengeViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun showEmailHint() {
+        if (!hasEmail) return
         val currentEntry = entry ?: return
         viewModelScope.launch {
             try {
@@ -231,6 +255,13 @@ class ChallengeViewModel(application: Application) : AndroidViewModel(applicatio
             } catch (_: Exception) {
                 maskedEmailHint = "Unable to show hint"
             }
+        }
+    }
+
+    fun showPasswordHint() {
+        val currentEntry = entry ?: return
+        if (currentEntry.passwordHint.isNotEmpty()) {
+            passwordHintRevealed = currentEntry.passwordHint
         }
     }
 
@@ -256,32 +287,7 @@ class ChallengeViewModel(application: Application) : AndroidViewModel(applicatio
         shakePassword = false
     }
 
-    private fun maskEmailForHint(email: String): String {
-        val atIndex = email.indexOf('@')
-        if (atIndex < 1) return email
-
-        val local = email.substring(0, atIndex)
-        val domain = email.substring(atIndex + 1)
-        val dotIndex = domain.lastIndexOf('.')
-        if (dotIndex < 2) return email
-
-        val domainName = domain.substring(0, dotIndex)
-        val tld = domain.substring(dotIndex)
-
-        val maskedLocal = if (local.length <= 1) {
-            "$local•••"
-        } else {
-            "${local.first()}•••${local.last()}"
-        }
-
-        val maskedDomain = if (domainName.length <= 2) {
-            "$domainName•••"
-        } else {
-            "${domainName.take(2)}•••"
-        }
-
-        return "$maskedLocal@$maskedDomain$tld"
-    }
+    private fun maskEmailForHint(value: String): String = maskEmail(value)
 
     override fun onCleared() {
         super.onCleared()

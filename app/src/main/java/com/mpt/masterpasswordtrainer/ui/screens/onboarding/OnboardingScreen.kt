@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.WifiOff
@@ -34,11 +35,17 @@ import kotlinx.coroutines.launch
 @Composable
 fun OnboardingScreen(
     navController: NavHostController,
+    isReplay: Boolean = false,
     viewModel: OnboardingViewModel = viewModel()
 ) {
     val currentPage by viewModel.currentPage.collectAsState()
     val pagerState = rememberPagerState(pageCount = { viewModel.totalPages })
     val coroutineScope = rememberCoroutineScope()
+
+    // Set replay mode in viewmodel
+    LaunchedEffect(isReplay) {
+        viewModel.setIsReplay(isReplay)
+    }
 
     // Sync pager with viewmodel
     LaunchedEffect(currentPage) {
@@ -52,8 +59,22 @@ fun OnboardingScreen(
 
     val isLastPage = currentPage == viewModel.totalPages - 1
 
+    // Navigate back to dashboard helper for replay mode
+    val navigateBackToDashboard: () -> Unit = {
+        navController.navigate(Routes.DASHBOARD) {
+            popUpTo(Routes.DASHBOARD) { inclusive = true }
+        }
+    }
+
+    // Handle system back button during replay
+    if (isReplay) {
+        androidx.activity.compose.BackHandler {
+            navigateBackToDashboard()
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
-        // Skip button — top right (hidden on last page)
+        // Skip button — top right (hidden on last page for first launch)
         if (!isLastPage) {
             TextButton(
                 onClick = {
@@ -70,6 +91,22 @@ fun OnboardingScreen(
                     text = "Skip",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
+                )
+            }
+        }
+
+        // X close button — top right, shown during replay
+        if (isReplay) {
+            IconButton(
+                onClick = { navigateBackToDashboard() },
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 44.dp, end = if (!isLastPage) 64.dp else 8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "Close",
+                    tint = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)
                 )
             }
         }
@@ -112,25 +149,41 @@ fun OnboardingScreen(
                         headline = "Ready to train?",
                         body = "Add your first master password and set up your practice schedule. It takes 30 seconds.",
                         extraContent = {
-                            Button(
-                                onClick = {
-                                    navController.navigate(Routes.addEntry(isFromOnboarding = true))
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp)
-                                    .height(56.dp),
-                                shape = RoundedCornerShape(16.dp)
-                            ) {
-                                Text(
-                                    text = "Add My First Password",
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                    contentDescription = null
-                                )
+                            if (isReplay) {
+                                Button(
+                                    onClick = { navigateBackToDashboard() },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp)
+                                        .height(56.dp),
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Text(
+                                        text = "Go to Dashboard",
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                                    )
+                                }
+                            } else {
+                                Button(
+                                    onClick = {
+                                        navController.navigate(Routes.addEntry(isFromOnboarding = true))
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp)
+                                        .height(56.dp),
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Text(
+                                        text = "Add My First Password",
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                        contentDescription = null
+                                    )
+                                }
                             }
                         },
                         isVisible = isVisible

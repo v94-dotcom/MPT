@@ -16,11 +16,13 @@ import com.mpt.masterpasswordtrainer.ui.screens.onboarding.OnboardingScreen
 import com.mpt.masterpasswordtrainer.ui.screens.settings.SettingsScreen
 
 object Routes {
-    const val ONBOARDING = "onboarding"
+    const val ONBOARDING = "onboarding?isReplay={isReplay}"
     const val DASHBOARD = "dashboard"
     const val ADD_ENTRY = "add_entry?isFromOnboarding={isFromOnboarding}&entryId={entryId}"
     const val CHALLENGE = "challenge/{entryId}"
     const val SETTINGS = "settings"
+
+    fun onboarding(isReplay: Boolean = false) = "onboarding?isReplay=$isReplay"
 
     fun addEntry(isFromOnboarding: Boolean = false, entryId: String? = null): String {
         val base = "add_entry?isFromOnboarding=$isFromOnboarding"
@@ -39,8 +41,17 @@ fun MPTNavGraph(
         navController = navController,
         startDestination = startDestination
     ) {
-        composable(Routes.ONBOARDING) {
-            OnboardingScreen(navController = navController)
+        composable(
+            route = Routes.ONBOARDING,
+            arguments = listOf(
+                navArgument("isReplay") {
+                    type = NavType.BoolType
+                    defaultValue = false
+                }
+            )
+        ) { backStackEntry ->
+            val isReplay = backStackEntry.arguments?.getBoolean("isReplay") ?: false
+            OnboardingScreen(navController = navController, isReplay = isReplay)
         }
         composable(Routes.DASHBOARD) {
             DashboardScreen(navController = navController)
@@ -88,5 +99,5 @@ fun MPTNavGraph(
 fun getStartDestination(context: Context): String {
     val prefs = context.getSharedPreferences("mpt_prefs", Context.MODE_PRIVATE)
     val onboardingCompleted = prefs.getBoolean("onboarding_completed", false)
-    return if (onboardingCompleted) Routes.DASHBOARD else Routes.ONBOARDING
+    return if (onboardingCompleted) Routes.DASHBOARD else Routes.onboarding()
 }

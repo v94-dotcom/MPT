@@ -6,11 +6,13 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,7 +34,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Mail
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
@@ -131,7 +135,7 @@ fun ChallengeScreen(
 
     // Focus email field after email-wrong result
     LaunchedEffect(viewModel.verificationResult) {
-        if (viewModel.verificationResult == VerificationResult.EMAIL_WRONG) {
+        if (viewModel.hasEmail && viewModel.verificationResult == VerificationResult.EMAIL_WRONG) {
             delay(450) // After shake animation
             emailFocusRequester.requestFocus()
         }
@@ -255,7 +259,8 @@ fun ChallengeScreen(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     Text(
-                        text = "Type your credentials from memory",
+                        text = if (viewModel.hasEmail) "Type your credentials from memory"
+                               else "Type your password from memory",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
@@ -263,43 +268,45 @@ fun ChallengeScreen(
 
                     Spacer(modifier = Modifier.height(32.dp))
 
-                    // Email field with shake
-                    val emailBorderColor by animateColorAsState(
-                        targetValue = when (viewModel.verificationResult) {
-                            VerificationResult.EMAIL_WRONG -> Color(0xFFFFA000)
-                            VerificationResult.BOTH_WRONG -> Color(0xFFE53935)
-                            else -> MaterialTheme.colorScheme.outline
-                        },
-                        label = "emailBorder"
-                    )
+                    if (viewModel.hasEmail) {
+                        // Email field with shake
+                        val emailBorderColor by animateColorAsState(
+                            targetValue = when (viewModel.verificationResult) {
+                                VerificationResult.EMAIL_WRONG -> Color(0xFFFFA000)
+                                VerificationResult.BOTH_WRONG -> Color(0xFFE53935)
+                                else -> MaterialTheme.colorScheme.outline
+                            },
+                            label = "emailBorder"
+                        )
 
-                    OutlinedTextField(
-                        value = viewModel.emailInput,
-                        onValueChange = { viewModel.updateEmailInput(it) },
-                        label = { Text("Email address") },
-                        singleLine = true,
-                        enabled = !viewModel.isLocked && !viewModel.isVerifying,
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Email,
-                            imeAction = ImeAction.Next
-                        ),
-                        keyboardActions = KeyboardActions(
-                            onNext = { passwordFocusRequester.requestFocus() }
-                        ),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = emailBorderColor,
-                            unfocusedBorderColor = emailBorderColor
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(emailFocusRequester)
-                            .shakeAnimation(
-                                trigger = viewModel.shakeEmail,
-                                onComplete = { viewModel.onShakeEmailComplete() }
-                            )
-                    )
+                        OutlinedTextField(
+                            value = viewModel.emailInput,
+                            onValueChange = { viewModel.updateEmailInput(it) },
+                            label = { Text("Email / Username") },
+                            singleLine = true,
+                            enabled = !viewModel.isLocked && !viewModel.isVerifying,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Text,
+                                imeAction = ImeAction.Next
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onNext = { passwordFocusRequester.requestFocus() }
+                            ),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = emailBorderColor,
+                                unfocusedBorderColor = emailBorderColor
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(emailFocusRequester)
+                                .shakeAnimation(
+                                    trigger = viewModel.shakeEmail,
+                                    onComplete = { viewModel.onShakeEmailComplete() }
+                                )
+                        )
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
 
                     // Password field with shake
                     val passwordBorderColor by animateColorAsState(
@@ -388,27 +395,36 @@ fun ChallengeScreen(
                         )
                     }
 
-                    // Email hint option
+                    // Hint options (after 3 failures)
                     AnimatedVisibility(
                         visible = viewModel.showHintOption && !viewModel.showSuccess,
-                        enter = fadeIn() + slideInVertically { it / 2 }
+                        enter = fadeIn() + expandVertically()
                     ) {
                         Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(vertical = 4.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            if (viewModel.maskedEmailHint == null) {
-                                TextButton(onClick = { viewModel.showEmailHint() }) {
-                                    Text(
-                                        "Tap for email hint",
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            } else {
-                                Text(
-                                    text = "Hint: ${viewModel.maskedEmailHint}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                            // Login hint row
+                            if (viewModel.hasEmail) {
+                                HintRow(
+                                    icon = Icons.Filled.Mail,
+                                    label = "Show login hint",
+                                    revealedText = viewModel.maskedEmailHint,
+                                    accentColor = accentColor,
+                                    onClick = { viewModel.showEmailHint() }
+                                )
+                            }
+
+                            // Password hint row
+                            if (viewModel.hasPasswordHint) {
+                                HintRow(
+                                    icon = Icons.Filled.Lightbulb,
+                                    label = "Show password hint",
+                                    revealedText = viewModel.passwordHintRevealed,
+                                    accentColor = accentColor,
+                                    onClick = { viewModel.showPasswordHint() }
                                 )
                             }
                         }
@@ -446,7 +462,7 @@ fun ChallengeScreen(
                         Button(
                             onClick = { viewModel.verify() },
                             enabled = !viewModel.isVerifying &&
-                                    viewModel.emailInput.isNotBlank() &&
+                                    (!viewModel.hasEmail || viewModel.emailInput.isNotBlank()) &&
                                     passwordText.isNotEmpty(),
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -498,6 +514,69 @@ fun ChallengeScreen(
 
                     Spacer(modifier = Modifier.height(24.dp))
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HintRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    revealedText: String?,
+    accentColor: Color,
+    onClick: () -> Unit
+) {
+    AnimatedVisibility(
+        visible = true,
+        enter = fadeIn() + expandVertically()
+    ) {
+        if (revealedText == null) {
+            // Unrevealed: tappable text button
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onClick)
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = accentColor,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = accentColor,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        } else {
+            // Revealed: hint text with background
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = revealedText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
             }
         }
     }

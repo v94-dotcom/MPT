@@ -63,7 +63,7 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                     val maskedEmail = if (key != null) {
                         try {
                             val decrypted = CryptoUtil.decrypt(entry.encryptedEmail, entry.emailIV, key)
-                            maskEmail(decrypted)
+                            if (decrypted.isEmpty()) "" else maskEmail(decrypted)
                         } catch (_: Exception) {
                             "•••@•••"
                         }

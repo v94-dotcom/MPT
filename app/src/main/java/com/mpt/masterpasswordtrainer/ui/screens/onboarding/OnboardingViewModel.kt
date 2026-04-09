@@ -14,7 +14,14 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
     private val _currentPage = MutableStateFlow(0)
     val currentPage: StateFlow<Int> = _currentPage.asStateFlow()
 
+    private val _isReplay = MutableStateFlow(false)
+    val isReplay: StateFlow<Boolean> = _isReplay.asStateFlow()
+
     val totalPages = 4
+
+    fun setIsReplay(replay: Boolean) {
+        _isReplay.value = replay
+    }
 
     fun setPage(page: Int) {
         _currentPage.value = page.coerceIn(0, totalPages - 1)
@@ -29,6 +36,8 @@ class OnboardingViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun completeOnboarding() {
-        prefs.edit().putBoolean("onboarding_completed", true).apply()
+        if (!_isReplay.value) {
+            prefs.edit().putBoolean("onboarding_completed", true).apply()
+        }
     }
 }

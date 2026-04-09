@@ -17,5 +17,6 @@ data class PasswordEntry(
     val createdAt: Long,
     val streak: Int = 0,
     val totalAttempts: Int = 0,
-    val successfulAttempts: Int = 0
+    val successfulAttempts: Int = 0,
+    val passwordHint: String = ""
 )

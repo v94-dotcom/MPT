@@ -37,11 +37,15 @@ class AddEntryViewModel(application: Application) : AndroidViewModel(application
         private set
     var email by mutableStateOf("")
         private set
+    var emailEnabled by mutableStateOf(true)
+        private set
     var password by mutableStateOf(charArrayOf())
         private set
     var confirmPassword by mutableStateOf(charArrayOf())
         private set
     var reminderDays by mutableIntStateOf(7)
+        private set
+    var passwordHint by mutableStateOf("")
         private set
 
     // UI state
@@ -67,13 +71,22 @@ class AddEntryViewModel(application: Application) : AndroidViewModel(application
         serviceIcon = entry.serviceIcon
         serviceColor = entry.serviceColor
         reminderDays = entry.reminderDays
+        passwordHint = entry.passwordHint
 
         // Decrypt email to pre-fill
         try {
             val key = KeystoreManager.getOrCreateKey()
-            email = CryptoUtil.decrypt(entry.encryptedEmail, entry.emailIV, key)
+            val decrypted = CryptoUtil.decrypt(entry.encryptedEmail, entry.emailIV, key)
+            if (decrypted.isEmpty()) {
+                emailEnabled = false
+                email = ""
+            } else {
+                emailEnabled = true
+                email = decrypted
+            }
         } catch (_: Exception) {
             email = ""
+            emailEnabled = false
             errors = mapOf("general" to "Could not decrypt email. You can re-enter it.")
         }
     }
@@ -96,6 +109,14 @@ class AddEntryViewModel(application: Application) : AndroidViewModel(application
         clearError("email")
     }
 
+    fun updateEmailEnabled(enabled: Boolean) {
+        emailEnabled = enabled
+        if (!enabled) {
+            email = ""
+            clearError("email")
+        }
+    }
+
     fun updatePassword(value: CharArray) {
         password.fill('\u0000')
         password = value
@@ -111,6 +132,10 @@ class AddEntryViewModel(application: Application) : AndroidViewModel(application
 
     fun updateReminderDays(value: Int) {
         reminderDays = value
+    }
+
+    fun updatePasswordHint(value: String) {
+        passwordHint = value.take(100)
     }
 
     fun save(isFromOnboarding: Boolean, onSuccess: () -> Unit) {
@@ -152,7 +177,8 @@ class AddEntryViewModel(application: Application) : AndroidViewModel(application
                             emailIV = emailIV,
                             passwordHash = finalHash,
                             passwordSalt = finalSalt,
-                            reminderDays = reminderDays
+                            reminderDays = reminderDays,
+                            passwordHint = passwordHint.trim()
                         )
                     } else {
                         val salt = HashUtil.generateSalt()
@@ -170,7 +196,8 @@ class AddEntryViewModel(application: Application) : AndroidViewModel(application
                             passwordSalt = salt,
                             reminderDays = reminderDays,
                             lastVerified = System.currentTimeMillis(),
-                            createdAt = System.currentTimeMillis()
+                            createdAt = System.currentTimeMillis(),
+                            passwordHint = passwordHint.trim()
                         )
                     }
                 }
@@ -207,10 +234,8 @@ class AddEntryViewModel(application: Application) : AndroidViewModel(application
             errs["serviceName"] = "Service name is required"
         }
 
-        if (email.isBlank()) {
-            errs["email"] = "Email is required"
-        } else if (!email.trim().matches(Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"))) {
-            errs["email"] = "Enter a valid email address"
+        if (emailEnabled && email.isBlank()) {
+            errs["email"] = "Email / Username is required"
         }
 
         if (!isEditMode && password.isEmpty()) {

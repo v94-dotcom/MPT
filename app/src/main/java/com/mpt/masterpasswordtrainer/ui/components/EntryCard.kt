@@ -69,33 +69,47 @@ fun getIconForName(name: String): ImageVector {
     }
 }
 
-/** Masks an email for display: "johnsmith@gmail.com" → "j•••h@gm•••.com". */
-fun maskEmail(email: String): String {
-    val atIndex = email.indexOf('@')
-    if (atIndex < 1) return email
+/**
+ * Masks an email or username for display.
+ * Email: "johnsmith@gmail.com" → "j•••h@gm•••.com"
+ * Username: "admin" → "ad•••n", "jo" → "j•", "longusername123" → "lo•••23"
+ */
+fun maskEmail(value: String): String {
+    if (value.contains('@')) {
+        val atIndex = value.indexOf('@')
+        if (atIndex < 1) return value
 
-    val local = email.substring(0, atIndex)
-    val domain = email.substring(atIndex + 1)
-    val dotIndex = domain.lastIndexOf('.')
+        val local = value.substring(0, atIndex)
+        val domain = value.substring(atIndex + 1)
+        val dotIndex = domain.lastIndexOf('.')
 
-    if (dotIndex < 2) return email
+        if (dotIndex < 2) return value
 
-    val domainName = domain.substring(0, dotIndex)
-    val tld = domain.substring(dotIndex) // includes the dot
+        val domainName = domain.substring(0, dotIndex)
+        val tld = domain.substring(dotIndex) // includes the dot
 
-    val maskedLocal = if (local.length <= 1) {
-        "$local•••"
-    } else {
-        "${local.first()}•••${local.last()}"
+        val maskedLocal = if (local.length <= 1) {
+            "$local•••"
+        } else {
+            "${local.first()}•••${local.last()}"
+        }
+
+        val maskedDomain = if (domainName.length <= 2) {
+            "$domainName•••"
+        } else {
+            "${domainName.take(2)}•••"
+        }
+
+        return "$maskedLocal@$maskedDomain$tld"
     }
 
-    val maskedDomain = if (domainName.length <= 2) {
-        "$domainName•••"
-    } else {
-        "${domainName.take(2)}•••"
+    // Plain username masking
+    return when {
+        value.length <= 2 -> "${value.first()}•"
+        value.length <= 4 -> "${value.first()}••${value.last()}"
+        value.length <= 8 -> "${value.take(2)}•••${value.last()}"
+        else -> "${value.take(2)}•••${value.takeLast(2)}"
     }
-
-    return "$maskedLocal@$maskedDomain$tld"
 }
 
 /** Returns the number of whole days since the entry was last verified. */
@@ -244,14 +258,16 @@ fun EntryCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = maskedEmail,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    if (maskedEmail.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = maskedEmail,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     Spacer(modifier = Modifier.height(6.dp))
                     Row(
                         verticalAlignment = Alignment.CenterVertically,

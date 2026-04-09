@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -44,6 +45,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -158,7 +160,7 @@ fun AddEntryScreen(
         "Indigo" to 0xFF3949ABL,
     )
 
-    val reminderOptions = listOf(3, 5, 7, 14, 30)
+    val reminderOptions = listOf(1, 3, 5, 7, 14, 30)
 
     // Filtered autocomplete suggestions
     val filteredSuggestions = if (viewModel.serviceName.length >= 1) {
@@ -247,11 +249,11 @@ fun AddEntryScreen(
 
                     // Icon picker
                     Text("Icon", style = MaterialTheme.typography.bodyMedium)
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        icons.forEach { (name, icon) ->
+                        items(icons.size) { index ->
+                            val (name, icon) = icons[index]
                             IconOption(
                                 icon = icon,
                                 contentDescription = name,
@@ -264,11 +266,11 @@ fun AddEntryScreen(
 
                     // Color picker
                     Text("Color", style = MaterialTheme.typography.bodyMedium)
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        colors.forEach { (name, colorValue) ->
+                        items(colors.size) { index ->
+                            val (name, colorValue) = colors[index]
                             ColorOption(
                                 color = Color(colorValue),
                                 contentDescription = name,
@@ -289,22 +291,31 @@ fun AddEntryScreen(
                         color = MaterialTheme.colorScheme.primary
                     )
 
-                    OutlinedTextField(
-                        value = viewModel.email,
-                        onValueChange = { viewModel.updateEmail(it) },
-                        label = { Text("Email address") },
-                        singleLine = true,
-                        isError = viewModel.errors.containsKey("email"),
-                        supportingText = viewModel.errors["email"]?.let { { Text(it) } },
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Email,
-                            imeAction = ImeAction.Next
-                        ),
-                        keyboardActions = KeyboardActions(
-                            onNext = { focusManager.moveFocus(FocusDirection.Down) }
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = viewModel.email,
+                            onValueChange = { viewModel.updateEmail(it) },
+                            label = { Text("Email / Username") },
+                            singleLine = true,
+                            enabled = viewModel.emailEnabled,
+                            isError = viewModel.errors.containsKey("email"),
+                            supportingText = viewModel.errors["email"]?.let { { Text(it) } },
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Text,
+                                imeAction = ImeAction.Next
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onNext = { focusManager.moveFocus(FocusDirection.Down) }
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                        Checkbox(
+                            checked = viewModel.emailEnabled,
+                            onCheckedChange = { viewModel.updateEmailEnabled(it) }
+                        )
+                    }
 
                     OutlinedTextField(
                         value = passwordText,
@@ -380,6 +391,47 @@ fun AddEntryScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+
+                    // Password hint (optional)
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = "Password hint (optional)",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedTextField(
+                        value = viewModel.passwordHint,
+                        onValueChange = { viewModel.updatePasswordHint(it) },
+                        placeholder = { Text("e.g. childhood pet + graduation year") },
+                        singleLine = true,
+                        supportingText = {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "This hint will be shown after 3 failed attempts. Never write your actual password here.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (viewModel.passwordHint.isNotEmpty()) {
+                                    Text(
+                                        text = "${viewModel.passwordHint.length}/100",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(
+                            onDone = { focusManager.clearFocus() }
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
 
@@ -387,7 +439,7 @@ fun AddEntryScreen(
             AnimatedSection(visible = visibleSections >= 3, delayMillis = 160) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        "Reminder interval",
+                        "Reminder interval (days)",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -402,13 +454,14 @@ fun AddEntryScreen(
                                     count = reminderOptions.size
                                 )
                             ) {
-                                Text("${days}d")
+                                Text("$days")
                             }
                         }
                     }
 
                     Text(
-                        "You'll be reminded to verify every ${viewModel.reminderDays} days",
+                        text = if (viewModel.reminderDays == 1) "You'll be reminded to verify every day"
+                               else "You'll be reminded to verify every ${viewModel.reminderDays} days",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -493,7 +546,7 @@ private fun IconOption(
 
     Box(
         modifier = Modifier
-            .size(48.dp)
+            .size(44.dp)
             .clip(CircleShape)
             .then(borderMod)
             .background(bgColor, CircleShape)
@@ -509,7 +562,7 @@ private fun IconOption(
             imageVector = icon,
             contentDescription = null,
             tint = iconColor,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(36.dp)
         )
     }
 }
@@ -527,7 +580,7 @@ private fun ColorOption(
 
     Box(
         modifier = Modifier
-            .size(48.dp)
+            .size(40.dp)
             .clip(CircleShape)
             .then(borderMod)
             .background(color, CircleShape)

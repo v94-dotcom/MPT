@@ -4,6 +4,7 @@ import android.content.pm.PackageManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,9 +15,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Fingerprint
@@ -55,6 +59,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -62,6 +67,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import com.mpt.masterpasswordtrainer.ui.navigation.Routes
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -118,12 +124,12 @@ fun SettingsScreen(
             // --- Default Reminder Section ---
             SectionHeader(icon = { Icon(Icons.Filled.Timer, contentDescription = null) }, title = "Default Reminder")
             Text(
-                text = "Default interval for new entries",
+                text = "Default interval for new entries (days)",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
-            val reminderOptions = listOf(3, 5, 7, 14, 30)
+            val reminderOptions = listOf(1, 3, 5, 7, 14, 30)
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 reminderOptions.forEachIndexed { index, days ->
                     SegmentedButton(
@@ -131,7 +137,7 @@ fun SettingsScreen(
                         onClick = { viewModel.setDefaultReminderDays(days) },
                         selected = defaultReminderDays == days
                     ) {
-                        Text("${days}d")
+                        Text("$days")
                     }
                 }
             }
@@ -223,6 +229,32 @@ fun SettingsScreen(
                         Text(label)
                     }
                 }
+            }
+
+            SettingsDivider()
+
+            // --- Help Section ---
+            SectionHeader(icon = { Icon(Icons.Filled.AutoStories, contentDescription = null) }, title = "Help")
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable {
+                        navController.navigate(Routes.onboarding(isReplay = true))
+                    }
+                    .padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "View onboarding tutorial",
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f)
+                )
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             SettingsDivider()
@@ -325,7 +357,7 @@ fun SettingsScreen(
                         viewModel.deleteAllData()
                         showDeleteDialog = false
                         deleteConfirmText = ""
-                        navController.navigate("onboarding") {
+                        navController.navigate(Routes.onboarding()) {
                             popUpTo(0) { inclusive = true }
                         }
                     },
