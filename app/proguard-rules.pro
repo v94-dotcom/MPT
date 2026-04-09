@@ -34,10 +34,46 @@
 # --- AndroidX Security / EncryptedSharedPreferences ---
 -keep class androidx.security.crypto.** { *; }
 
-# --- Google Tink (used by EncryptedSharedPreferences) ---
+# --- Google Tink (used internally by EncryptedSharedPreferences) ---
+-keep class com.google.crypto.tink.** { *; }
+-dontwarn com.google.crypto.tink.**
 -dontwarn javax.annotation.concurrent.GuardedBy
 -dontwarn com.google.errorprone.annotations.**
 -dontwarn javax.annotation.**
 
 # --- Android Keystore ---
 -keep class android.security.keystore.** { *; }
+
+# --- Kotlin Metadata ---
+-keep class kotlin.Metadata { *; }
+-dontwarn kotlin.reflect.jvm.internal.**
+
+# --- Kotlin Coroutines ---
+-keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
+-keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
+-keepclassmembers class kotlinx.coroutines.** {
+    volatile <fields>;
+}
+-dontwarn kotlinx.coroutines.**
+
+# --- ViewModels (reflective instantiation by Compose viewModel()) ---
+-keep class * extends androidx.lifecycle.ViewModel { <init>(...); }
+-keep class * extends androidx.lifecycle.AndroidViewModel { <init>(...); }
+
+# --- WorkManager Workers (reflective instantiation) ---
+-keep class * extends androidx.work.ListenableWorker {
+    public <init>(android.content.Context, androidx.work.WorkerParameters);
+}
+
+# --- BroadcastReceivers ---
+-keep class com.mpt.masterpasswordtrainer.worker.BootReceiver { *; }
+
+# --- AppWidgetProviders ---
+-keep class com.mpt.masterpasswordtrainer.widget.** { *; }
+
+# --- AndroidX Biometric ---
+-keep class androidx.biometric.** { *; }
+
+# --- General safety ---
+-keepattributes Signature
+-keepattributes Exceptions
