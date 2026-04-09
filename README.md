@@ -17,6 +17,7 @@
 </p>
 
 ---
+[Download APK](https://github.com/v94-dotcom/MPT/releases/download/v1/app-release.apk)
 
 ## The Problem
 
