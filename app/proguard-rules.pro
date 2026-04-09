@@ -24,6 +24,9 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 
+# --- Keep all data model classes ---
+-keep class com.mpt.masterpasswordtrainer.data.model.** { *; }
+
 # --- Argon2kt native library ---
 -keep class com.lambdapioneer.argon2kt.** { *; }
 -keepclassmembers class com.lambdapioneer.argon2kt.** { *; }
