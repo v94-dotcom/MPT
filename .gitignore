@@ -13,3 +13,5 @@
 .externalNativeBuild
 .cxx
 local.properties
+mpt-release-key.jks
+keystore.properties
