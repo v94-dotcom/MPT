@@ -99,7 +99,7 @@ Your actual password is **never visible** anywhere in the app — not in storage
 
 ## Screenshots
 
-<img src="img/Screenshot_20260409_192701.png" width="250" /> <img src="img/Screenshot_20260409_192714.png" width="250" /><img src="img/Screenshot_20260409_192701.png" width="250" /> <img src="img/Screenshot_20260409_192714.png" width="250" />
+<img src="img/Screenshot_20260409_192701.png" width="250" /> <img src="img/Screenshot_20260409_193325.png" width="250" /><img src="img/Screenshot_20260409_192714.png" width="250" /> <img src="img/Screenshot_20260409_193335.png" width="250" />
 
 
 ---
